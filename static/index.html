@@ -69,6 +69,16 @@ body {
                 <button id="videoBtn">mute video</button>
                 <button id="shareBtn">share screen</button>
             </p>
+            <label>Bandwidth:</label>
+            <select id="bandwidth" disabled>
+                <option value="unlimited" selected>unlimited</option>
+                <option value="2000">2000</option>
+                <option value="1000">1000</option>
+                <option value="500">500</option>
+                <option value="250">250</option>
+                <option value="125">125</option>
+                <option value="75">75</option>
+            </select>
         </div>
         <div class="right">
             <p>Peer ID: <span id="peerId"></span></p>
@@ -102,6 +112,35 @@ videoBtn.addEventListener('click', () => {
     // replaceTrack to re-enable. Not necessary in Firefox which turns
     // off the camera light.
 });
+
+const bandwidthSelector = document.getElementById('bandwidth');
+bandwidthSelector.addEventListener('change', () => {
+    const bandwidth = bandwidthSelector.options[bandwidthSelector.selectedIndex].value;
+    updateBandwidth(bandwidth);
+});
+
+// update bandwidth
+function updateBandwidth(bandwidth) {
+    peers.forEach(pc => {
+        const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
+        if (!sender) {
+            return;
+        }
+        const parameters = sender.getParameters();
+        parameters.encodings = parameters.encodings || [{}];
+
+        if (bandwidth === 'unlimited') {
+            delete parameters.encodings[0].maxBitrate;
+        } else {
+            parameters.encodings[0].maxBitrate = bandwidth * 1000;
+        }
+        sender.setParameters(parameters)
+            .then(() => {
+                bandwidthSelector.disabled = false;
+            })
+            .catch(e => console.error(e));
+    });
+}
 
 // Relatively self-contained screensharing/replaceTrack example.
 let screenShare;
@@ -159,6 +198,7 @@ let iceServers = null; // the latest iceServers we got from the signaling server
 async function getUserMedia() {
     const stream = await navigator.mediaDevices.getUserMedia({audio: true, video: true});
     document.getElementById('localVideo').srcObject = stream;
+    document.getElementById('bandwidth').disabled = false;
     return stream;
 }
 
