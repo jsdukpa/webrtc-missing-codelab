@@ -219,6 +219,7 @@ function connect() {
             console.log('websocket closed', e);
         });
         ws.addEventListener('message', async (e) => {
+            debugger;
             let data;
             try {
                 data = JSON.parse(e.data);
@@ -226,6 +227,7 @@ function connect() {
                 console.log('Received invalid JSON', err, e.data);
                 return;
             }
+            console.log('socket message', data.type);
             switch(data.type) {
             case 'hello':
                 clientId = data.id;
@@ -273,6 +275,7 @@ function connect() {
                         type: 'answer',
                         sdp: answer.sdp,
                         id: data.id,
+                        callId: data.callId
                     }));
                     hangupBtn.disabled = false;
                 } else {

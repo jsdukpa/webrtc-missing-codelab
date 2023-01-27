@@ -39,6 +39,9 @@ const connections = new Map();
 // WebSocket server, running alongside the http server.
 const wss = new WebSocket.Server({ server });
 
+// map of calls
+const calls = new Map();
+
 // Generate a (unique) client id.
 // Exercise: extend this to generate a human-readable id.
 function generateClientId() {
@@ -52,6 +55,9 @@ wss.on('connection', (ws) => {
     // if you have ids from another source but requires some kind of authentication.
     const id = generateClientId();
     console.log(id, 'Received new connection');
+
+
+    let callId = null; // assume we can only have one call at a time for now
 
     if (connections.has(id)) {
         console.log(id, 'Duplicate id detected, closing');
@@ -86,7 +92,7 @@ wss.on('connection', (ws) => {
     });
 
     ws.on('message', (message) => {
-        console.log(id, 'received', message);
+        console.log(id, 'received');
         let data;
         // TODO: your protocol should send some kind of error back to the caller instead of
         // returning silently below.
@@ -101,6 +107,8 @@ wss.on('connection', (ws) => {
             return;
         }
 
+        console.log(id, 'from: ', data.id, 'type:', data.type);
+
         // The direct lookup of the other clients websocket is overly simplified.
         // In the real world you might be running in a cluster and would need to send
         // messages between different servers in the cluster to reach the other side.
@@ -110,16 +118,71 @@ wss.on('connection', (ws) => {
             // simple as sending a 'bye' with an extra error element saying 'not-found'.
             return;
         }
+        
         const peer = connections.get(data.id);
+        switch (data.type) {
+            case 'offer':
+                callId = createCall(id, data.id);
+                sendMessage(peer, Object.assign({}, data, {id, callId}));
+                break;
+            case 'answer':
+                answerCall(data.callId);
+                callId = data.callId;
+                sendMessage(peer, Object.assign({}, data, {id}));
+                break;
+            case 'bye':
+                hangup(callId);
+                sendMessage(peer, Object.assign({}, data, {id}));
+                break;
+            default:
+                sendMessage(peer, Object.assign({}, data, {id}));
+        }
+    });
 
+    function createCall(fromId, toId) {
+        const call = {
+            id: generateClientId(),
+            status: 'calling',
+            fromId,
+            toId,
+            startTime: undefined,
+            endTime: undefined,
+        };
+        calls.set(call.id, call);
+        console.log('call created', call);
+        return call.id;
+    }
+
+    function answerCall(callId) {
+        console.log('begin answer', callId);
+        if (!calls.has(callId)) return;
+
+        const call = calls.get(callId);
+        call.status = 'answered';
+        call.startTime = Date.now();
+
+        console.log('call answered', call);
+    }
+
+    function hangup(callId) {
+        console.log('begin hangup', callId);
+        if (!calls.has(callId)) return;
+
+        const call = calls.get(callId);
+        call.status = 'hungup';
+        call.endTime = Date.now();
+
+        console.log('call hungup', call);
+    }
+
+    function sendMessage(peer, data) {
         // Stamp messages with our id. In the client-to-server direction, 'id' is the
         // client that the message is sent to. In the server-to-client direction, it is
         // the client that the message originates from.
-        data.id = id;
         peer.send(JSON.stringify(data), (err) => {
             if (err) {
                 console.log(id, 'failed to send to peer', err);
             }
         });
-    });
+    }
 });
