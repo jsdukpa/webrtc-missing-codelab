@@ -10,12 +10,7 @@ const port = 8080;
 // generate twilio token
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken = process.env.TWILIO_AUTH_TOKEN;
-const client = require('twilio')(accountSid, authToken);
-let twilioToken;
-client.tokens.create().then(token => {
-    console.log('Twilio token:', token);
-    twilioToken = token;
-});
+const twilio = require('twilio')(accountSid, authToken);
 
 
 // We use a HTTP server for serving static pages. In the real world you'll
@@ -75,11 +70,13 @@ wss.on('connection', (ws) => {
     // Send an ice server configuration to the client. For stun this is synchronous,
     // for TURN it might require getting credentials.
     const stunServer = { urls: 'stun:stun.l.google.com:19302' };
-    const twilioIceServers = twilioToken ? twilioToken.iceServers : [];
-    ws.send(JSON.stringify({
-        type: 'iceServers',
-        iceServers: [stunServer, ...twilioIceServers],
-    }));
+    twilio.tokens.create().then(token => {
+        console.log('Twilio token:', token);
+        ws.send(JSON.stringify({
+            type: 'iceServers',
+            iceServers: [stunServer, ...token.iceServers],
+        }));
+    });
 
     // Remove the connection. Note that this does not tell anyone you are currently in a call with
     // that this happened. This would require additional statekeeping that is not done here.
