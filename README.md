@@ -1,5 +1,5 @@
-# Read-only repository
-The github repository is archived to make it read-only. Please ask questions in the course slack channel.
+# Foked repository
+I forked the original repo to add my excercises to the branch: jimmy
 
 # WebRTC - the missing codelab
 The WebRTC samples have been a useful place to demonstrate the
