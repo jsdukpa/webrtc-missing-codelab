@@ -83,6 +83,8 @@ body {
         <div class="right">
             <p>Peer ID: <span id="peerId"></span></p>
             <p>
+                <button id="callButton">call</button>
+                <button id="answerButton" disabled>answer</button>
                 <button id="hangupButton" disabled>hangup</button>
             </p>
         </div>
@@ -117,6 +119,18 @@ const bandwidthSelector = document.getElementById('bandwidth');
 bandwidthSelector.addEventListener('change', () => {
     const bandwidth = bandwidthSelector.options[bandwidthSelector.selectedIndex].value;
     updateBandwidth(bandwidth);
+});
+
+const callBtn = document.getElementById('callButton');
+callBtn.addEventListener('click', () => {
+    const targetId = prompt('enter an ID to call');
+    call(targetId);
+    callBtn.disabled = true;
+});
+
+const answerBtn = document.getElementById('answerButton');
+answerBtn.addEventListener('click', () => {
+    answerCall();
 });
 
 // update bandwidth
@@ -194,6 +208,7 @@ let clientId; // our client id.
 let ws; // our websocket.
 let localStream; // local stream to be acquired from getUserMedia.
 let iceServers = null; // the latest iceServers we got from the signaling server.
+let currentCall = null; // the current active or pending call, or null if there is none
 
 async function getUserMedia() {
     const stream = await navigator.mediaDevices.getUserMedia({audio: true, video: true});
@@ -246,6 +261,8 @@ function connect() {
                 } else {
                     console.log('Peer not found', data.id);
                 }
+                callBtn.disabled = false;
+                currentCall = null;
                 break;
             case 'offer':
                 if (!peers.has(data.id)) {
@@ -259,24 +276,10 @@ function connect() {
                         }));
                         return;
                     }
-                    // Create a new peer.
-                    const pc = createPeerConnection(data.id);
-                    if (localStream) {
-                        localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
-                    }
-                    await pc.setRemoteDescription({
-                        type: data.type,
-                        sdp: data.sdp
-                    });
-                    const answer = await pc.createAnswer();
-                    await pc.setLocalDescription(answer);
-                    ws.send(JSON.stringify({
-                        type: 'answer',
-                        sdp: answer.sdp,
-                        id: data.id,
-                        callId: data.callId
-                    }));
+                    currentCall = data;
                     hangupBtn.disabled = false;
+                    answerBtn.disabled = false;
+                    alert(`Incoming call from: ${data.id}`);
                 } else {
                     console.log('Subsequent offer not implemented');
                 }
@@ -307,6 +310,29 @@ function connect() {
             }
         });
     });
+}
+
+async function answerCall() {
+    if (!currentCall) {
+        return;
+    }
+    // Create a new peer.
+    const pc = createPeerConnection(currentCall.id);
+    if (localStream) {
+        localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+    }
+    await pc.setRemoteDescription({
+        type: currentCall.type,
+        sdp: currentCall.sdp
+    });
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    ws.send(JSON.stringify({
+        type: 'answer',
+        sdp: answer.sdp,
+        id: currentCall.id,
+        callId: currentCall.callId
+    }));
 }
 
 // Helper function to create a peerconnection and set up a couple of useful
@@ -470,21 +496,16 @@ function hangup(id) {
         type: 'bye',
         id,
     }));
+    callBtn.disabled = false;
+    answerBtn.disabled = true;
+    currentCall = null;
 }
-
-// Autoconnect when given a peer id, i.e. #someid
-const initialHash = window.location.hash.substr(1);
 
 // Get the camera, then connect to signaling. Makes things simple.
 getUserMedia()
   .then((stream) => {
     localStream = stream;
     return connect();
-})
-.then(() => {
-    if (initialHash.length) {
-        call(initialHash);
-    }
 });
 
 window.addEventListener('beforeunload', () => {
