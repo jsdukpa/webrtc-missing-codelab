@@ -52,6 +52,17 @@ body {
     background-position: right bottom;
     background-repeat: no-repeat;
 }
+
+#connectionState {
+    display: none;
+    position: absolute;
+    top: 0px;
+    right: 0px;
+}
+
+#connectionState.connected {
+    display: block;
+}
   </style>
 </head>
 <body>
@@ -61,6 +72,7 @@ body {
         </div>
         <div class="videocontainer right">
             <video id="remoteVideo" autoplay playsinline></video>
+            <div id="connectionState">&#x1f4f6;</div>
         </div>
         <div class="left">
             <p>Client ID: <span id="clientId"></span></p>
@@ -132,6 +144,8 @@ const answerBtn = document.getElementById('answerButton');
 answerBtn.addEventListener('click', () => {
     answerCall();
 });
+
+const connectionState = document.getElementById('connectionState');
 
 // update bandwidth
 function updateBandwidth(bandwidth) {
@@ -396,37 +410,40 @@ function createPeerConnection(id) {
         lastResult = await queryBitrateStats(pc, lastResult);
     }, 2000);
     peers.set(id, pc);
+
+    connectionState.classList.add('connected');
     return pc;
 }
 
 function onConnectionStats(results) {
-  // figure out the peer's ip
-  let activeCandidatePair = null;
-  let remoteCandidate = null;
+    // figure out the peer's ip
+    let activeCandidatePair = null;
+    let remoteCandidate = null;
 
-  // Search for the candidate pair, spec-way first.
-  results.forEach(report => {
-    if (report.type === 'transport') {
-      activeCandidatePair = results.get(report.selectedCandidatePairId);
-    }
-  });
-  // Fallback for Firefox.
-  if (!activeCandidatePair) {
+    // Search for the candidate pair, spec-way first.
     results.forEach(report => {
-      if (report.type === 'candidate-pair' && report.selected) {
-        activeCandidatePair = report;
-      }
+        console.log('report', report);
+        if (report.type === 'transport') {
+            activeCandidatePair = results.get(report.selectedCandidatePairId);
+        }
     });
-  }
-  if (activeCandidatePair && activeCandidatePair.remoteCandidateId) {
-    remoteCandidate = results.get(activeCandidatePair.remoteCandidateId);
-  }
-  if (remoteCandidate) {
+    // Fallback for Firefox.
+    if (!activeCandidatePair) {
+    results.forEach(report => {
+        if (report.type === 'candidate-pair' && report.selected) {
+        activeCandidatePair = report;
+        }
+    });
+    }
+    if (activeCandidatePair && activeCandidatePair.remoteCandidateId) {
+        remoteCandidate = results.get(activeCandidatePair.remoteCandidateId);
+    }
+    if (remoteCandidate) {
     // Statistics are a bit of a mess still...
     console.log('Remote is',
         remoteCandidate.address || remoteCandidate.ip || remoteCandidate.ipAddress,
         remoteCandidate.port || remoteCandidate.portNumber);
-  }
+    }
 }
 
 async function queryBitrateStats(pc, lastResult) {
@@ -454,7 +471,10 @@ async function queryBitrateStats(pc, lastResult) {
 
           const packetrate = Math.floor(1000 * (packets - lastResult.get(report.id).packetsSent) /
             (now - lastResult.get(report.id).timestamp));
-          console.log(`Bitrate ${bitrate}kbps, overhead ${headerrate}kbps, ${packetrate} packets/second`);
+
+          const info = `Bitrate ${bitrate}kbps, overhead ${headerrate}kbps, ${packetrate} packets/second`;
+          console.log(info);
+          connectionState.title = info;
         }
       }
     });
