@@ -219,7 +219,6 @@ function connect() {
             console.log('websocket closed', e);
         });
         ws.addEventListener('message', async (e) => {
-            debugger;
             let data;
             try {
                 data = JSON.parse(e.data);
