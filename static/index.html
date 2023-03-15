@@ -192,6 +192,7 @@ const shareBtn = document.getElementById('shareBtn');
 shareBtn.addEventListener('click', async () => {
     if (screenShare) { // click-to-end.
         screenShare.getTracks().forEach(t => t.stop());
+        trackMetadata.delete(screenShare.id);
         screenShare = null;
         document.getElementById('localVideo').srcObject = localStream;
         replaceVideoTrack(localStream.getVideoTracks()[0]);
@@ -204,12 +205,18 @@ shareBtn.addEventListener('click', async () => {
     document.getElementById('localVideo').srcObject = stream;
     track.addEventListener('ended', () => {
         console.log('Screensharing ended via the browser UI');
+        trackMetadata.delete(screenShare.id);
         screenShare = null;
         document.getElementById('localVideo').srcObject = localStream;
         replaceVideoTrack(localStream.getVideoTracks()[0]);
         shareBtn.classList.remove('sharing');
     });
     screenShare = stream;
+    trackMetadata.set(screenShare.id, {
+        id: screenShare.id,
+        source: 'screen-share',
+        type: 'local',
+    });
     shareBtn.classList.add('sharing');
 });
 
@@ -234,6 +241,7 @@ let localStream; // local stream to be acquired from getUserMedia.
 let iceServers = null; // the latest iceServers we got from the signaling server.
 let currentCall = null; // the current active or pending call, or null if there is none
 let codecs = new Map();
+const trackMetadata = new Map();
 
 function initCodecList() {
     if (!window.RTCRtpSender || !window.RTCRtpSender.getCapabilities) return;
@@ -322,6 +330,16 @@ function connect() {
                     hangupBtn.disabled = false;
                     answerBtn.disabled = false;
                     alert(`Incoming call from: ${data.id}`);
+
+                    if (data.trackMeta) {
+                        data.trackMeta.forEach(({id, source, type}) => {
+                            trackMetadata.set(id, {
+                                id,
+                                source,
+                                type,
+                            });
+                        });
+                    }
                 } else {
                     console.log('Subsequent offer not implemented');
                 }
@@ -333,6 +351,15 @@ function connect() {
                         type: data.type,
                         sdp: data.sdp
                     });
+                    if (data.trackMeta) {
+                        data.trackMeta.forEach(({id, source, type}) => {
+                            trackMetadata.set(id, {
+                                id,
+                                source,
+                                type,
+                            });
+                        });
+                    }
                 } else {
                     console.log('Peer not found', data.id);
                 }
@@ -366,11 +393,16 @@ async function answerCall() {
     });
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
+    const trackMeta = [
+        screenShare && trackMetadata.get(screenShare.id),
+        localStream && trackMetadata.get(localStream.id),
+    ].filter(Boolean);
     ws.send(JSON.stringify({
         type: 'answer',
         sdp: answer.sdp,
         id: currentCall.id,
-        callId: currentCall.callId
+        callId: currentCall.callId,
+        trackMeta
     }));
 }
 
@@ -533,10 +565,15 @@ async function call(id) {
     const pc = createPeerConnection(id);
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
+    const trackMeta = [
+        screenShare && trackMetadata.get(screenShare.id),
+        localStream && trackMetadata.get(localStream.id),
+    ].filter(Boolean);
     ws.send(JSON.stringify({
         type: 'offer',
         sdp: offer.sdp,
         id,
+        trackMeta
     }));
     hangupBtn.disabled = false;
     document.getElementById('peerId').innerText = id;
@@ -567,6 +604,11 @@ initCodecList();
 getUserMedia()
 .then((stream) => {
     localStream = stream;
+    trackMetadata.set(localStream.id, {
+        id: localStream.id,
+        source: 'camera',
+        type: 'local',
+    });
     return connect();
 });
 
