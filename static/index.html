@@ -126,13 +126,24 @@ videoBtn.addEventListener('click', () => {
     const videoTrack = localStream.getVideoTracks()[0];
     if (videoTrack.enabled) {
         videoBtn.classList.add('muted');
+        videoTrack.enabled = false;
+        setTimeout(() => {
+            if (!videoTrack.enabled) {
+                videoTrack.stop();
+            }
+        }, 1000);
     } else {
         videoBtn.classList.remove('muted');
+        videoTrack.enabled = true;
+        if (videoTrack.readyState === 'ended') {
+            getUserMedia({video: true}).then(stream => {
+                const videoTrack = stream.getVideoTracks()[0];
+                localStream.removeTrack(videoTrack);
+                localStream.addTrack(videoTrack);
+                replaceVideoTrack(videoTrack);
+            });
+        }
     }
-    videoTrack.enabled = !videoTrack.enabled;
-    // The advanced version of this stops the track to disable and uses
-    // replaceTrack to re-enable. Not necessary in Firefox which turns
-    // off the camera light.
 });
 
 const bandwidthSelector = document.getElementById('bandwidth');
@@ -260,8 +271,8 @@ function initCodecList() {
     codecSelector.disabled = theCodecs.length === 0;
 }
 
-async function getUserMedia() {
-    const stream = await navigator.mediaDevices.getUserMedia({audio: true, video: true});
+async function getUserMedia(params = {audio: true, video: true}) {
+    const stream = await navigator.mediaDevices.getUserMedia(params);
     document.getElementById('localVideo').srcObject = stream;
     document.getElementById('bandwidth').disabled = false;
     return stream;
@@ -443,7 +454,8 @@ function createPeerConnection(id) {
             // called when the first frame is rendered.
             console.log(id, 'loaded metadata');
         };
-        remoteVideo.srcObject = e.streams[0];
+        const stream = e.streams[0];
+        remoteVideo.srcObject = stream;
     });
     pc.addEventListener('iceconnectionstatechange', () => {
         console.log(id, 'iceconnectionstatechange', pc.iceConnectionState);
